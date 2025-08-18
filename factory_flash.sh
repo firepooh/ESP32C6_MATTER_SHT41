@@ -29,13 +29,3 @@ case "$1" in
 esac    
 
 echo "Flash write completed!"
-
-# 1 input
-#esptool.py write_flash 0x3E0000 out/fff2_8001/eafb9b79-a9ae-4132-a727-100c2d8f1202/eafb9b79-a9ae-4132-a727-100c2d8f1202-partition.bin
-#echo "Write 1"
-
-# 2 input
-#esptool.py write_flash 0x3E0000 out/fff2_8001/eafb9b79-a9ae-4132-a727-100c2d8f1202/eafb9b79-a9ae-4132-a727-100c2d8f1202-partition.bin
-
-# 3 input
-#esptool.py write_flash 0x3E0000 out/fff2_8001/eafb9b79-a9ae-4132-a727-100c2d8f1202/eafb9b79-a9ae-4132-a727-100c2d8f1202-partition.bin
