@@ -3,6 +3,7 @@ build/
 *.elf
 *.map
 *.bin
+!out/**/*.bin      # 단, out/ 폴더 안의 .bin 파일은 포함
 *.hex
 *.a
 *.d
