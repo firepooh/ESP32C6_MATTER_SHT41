@@ -148,9 +148,10 @@ extern "C" void app_main()
     node_t *node = node::create(&node_config, app_attribute_update_cb, app_identification_cb);
     ABORT_APP_ON_FAILURE(node != nullptr, ESP_LOGE(TAG, "Failed to create Matter node"));
 
-    endpoint::on_off_light::config_t endpoint_config;
-    endpoint_t *app_endpoint = endpoint::on_off_light::create(node, &endpoint_config, ENDPOINT_FLAG_NONE, NULL);
-    ABORT_APP_ON_FAILURE(app_endpoint != nullptr, ESP_LOGE(TAG, "Failed to create on off light endpoint"));
+    // add temperature sensor device
+    temperature_sensor::config_t temp_sensor_config;
+    endpoint_t * temp_sensor_ep = temperature_sensor::create(node, &temp_sensor_config, ENDPOINT_FLAG_NONE, NULL);
+    ABORT_APP_ON_FAILURE(temp_sensor_ep != nullptr, ESP_LOGE(TAG, "Failed to create temperature_sensor endpoint"));
 
 #if CHIP_DEVICE_CONFIG_ENABLE_THREAD
     /* Set OpenThread platform config */
@@ -165,4 +166,30 @@ extern "C" void app_main()
     /* Matter start */
     err = esp_matter::start(app_event_cb);
     ABORT_APP_ON_FAILURE(err == ESP_OK, ESP_LOGE(TAG, "Failed to start Matter, err:%d", err));
+
+
+    uint16_t temp_ep_id = esp_matter::endpoint::get_id(temp_sensor_ep);
+    float temp = 25.0f;
+    while(1)
+    {
+        temp += 0.1f;
+        if( temp > 30 )
+          temp = 25.0f;
+          
+    // schedule the attribute update so that we can report it from matter thread
+    chip::DeviceLayer::SystemLayer().ScheduleLambda([temp_ep_id, temp]() {
+        attribute_t * attribute = attribute::get(temp_ep_id,
+                                                 TemperatureMeasurement::Id,
+                                                 TemperatureMeasurement::Attributes::MeasuredValue::Id);
+
+        esp_matter_attr_val_t val = esp_matter_invalid(NULL);
+        attribute::get_val(attribute, &val);
+        val.val.i16 = static_cast<int16_t>(temp * 100);
+
+        attribute::update(temp_ep_id, TemperatureMeasurement::Id, TemperatureMeasurement::Attributes::MeasuredValue::Id, &val);
+    });
+
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+
 }

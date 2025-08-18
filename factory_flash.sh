@@ -11,15 +11,15 @@ fi
 case "$1" in
     1)
         echo "write case1"
-        esptool.py write_flash 0x3E0000 out/fff2_8001/4a67147f-9eb7-411f-ba43-b67951be8e1b/4a67147f-9eb7-411f-ba43-b67951be8e1b-partition.bin
+        esptool.py write_flash 0x3E0000 out/fff2_8001/63a899fa-e5c7-4cd4-bc01-131629fd35cb/63a899fa-e5c7-4cd4-bc01-131629fd35cb-partition.bin
         ;;
     2)
         echo "write case2"
-        esptool.py write_flash 0x3E0000 out/fff2_8001/34c9fdf9-0e49-4c2f-bf00-bdefe93f3d9f/34c9fdf9-0e49-4c2f-bf00-bdefe93f3d9f-partition.bin
+        esptool.py write_flash 0x3E0000 out/fff2_8001/69e615b0-5f41-4ed9-9add-0e1c4869468f/69e615b0-5f41-4ed9-9add-0e1c4869468f-partition.bin
         ;;
     3)
         echo "write case3"
-        esptool.py write_flash 0x3E0000 out/fff2_8001/55f6b997-d9eb-4b5c-9976-109806ac1229/55f6b997-d9eb-4b5c-9976-109806ac1229-partition.bin
+        esptool.py write_flash 0x3E0000 out/fff2_8001/0546a175-e721-433d-a854-6c07dce844a7/0546a175-e721-433d-a854-6c07dce844a7-partition.bin
         ;;
     *)
         echo "Error: Invalid parameter '$1'"
