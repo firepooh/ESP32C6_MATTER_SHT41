@@ -10,16 +10,16 @@ fi
 # case문으로 분기
 case "$1" in
     1)
-        echo "write 4cf80187-89f8-4ca6-9b94-85774a613165-partition.bin"
-        esptool.py write_flash 0x3E0000 out/fff2_8001/4cf80187-89f8-4ca6-9b94-85774a613165/4cf80187-89f8-4ca6-9b94-85774a613165-partition.bin
+        echo "write case1"
+        esptool.py write_flash 0x3E0000 out/fff2_8001/4a67147f-9eb7-411f-ba43-b67951be8e1b/4a67147f-9eb7-411f-ba43-b67951be8e1b-partition.bin
         ;;
     2)
-        echo "write 4d33caac-768f-433d-ab0d-43bf3a0ee01a-partition.bin"
-        esptool.py write_flash 0x3E0000 out/fff2_8001/4d33caac-768f-433d-ab0d-43bf3a0ee01a/4d33caac-768f-433d-ab0d-43bf3a0ee01a-partition.bin
+        echo "write case2"
+        esptool.py write_flash 0x3E0000 out/fff2_8001/34c9fdf9-0e49-4c2f-bf00-bdefe93f3d9f/34c9fdf9-0e49-4c2f-bf00-bdefe93f3d9f-partition.bin
         ;;
     3)
-        echo "write 8a3b5632-03ab-40c9-99bb-e784b00b0b16-partition.bin"
-        esptool.py write_flash 0x3E0000 out/fff2_8001/8a3b5632-03ab-40c9-99bb-e784b00b0b16/8a3b5632-03ab-40c9-99bb-e784b00b0b16-partition.bin
+        echo "write case3"
+        esptool.py write_flash 0x3E0000 out/fff2_8001/55f6b997-d9eb-4b5c-9976-109806ac1229/55f6b997-d9eb-4b5c-9976-109806ac1229-partition.bin
         ;;
     *)
         echo "Error: Invalid parameter '$1'"
