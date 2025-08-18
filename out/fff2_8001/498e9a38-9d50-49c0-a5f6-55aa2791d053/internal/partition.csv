@@ -1,0 +1,14 @@
+key,type,encoding,value
+chip-factory,namespace,,
+discriminator,data,u32,2969
+iteration-count,data,u32,10000
+salt,data,string,xIfQ1JB7SUTtqgGMinvmgIKi/FuBtyHgYpvCHvbIR+E=
+vendor-id,data,u32,65522
+product-id,data,u32,32769
+serial-num,data,string,0e6ae725dded75ab5c3c53956111d4e2
+dac-cert,file,binary,/home/jyp/work/ESP32C6_MATTER_SHT41/out/fff2_8001/498e9a38-9d50-49c0-a5f6-55aa2791d053/internal/DAC_cert.der
+dac-key,file,binary,/home/jyp/work/ESP32C6_MATTER_SHT41/out/fff2_8001/498e9a38-9d50-49c0-a5f6-55aa2791d053/internal/DAC_private_key.bin
+dac-pub-key,file,binary,/home/jyp/work/ESP32C6_MATTER_SHT41/out/fff2_8001/498e9a38-9d50-49c0-a5f6-55aa2791d053/internal/DAC_public_key.bin
+pai-cert,file,binary,/home/jyp/work/ESP32C6_MATTER_SHT41/out/fff2_8001/staging/pai_cert.der
+verifier,data,string,MrR1oDq2a2fQXEj3fOCZbfLYbrV48JaOBM2edj6ZHEwE1/d+s5PjmL7/i5cXxMLxNpXB4T58TrXHEy22ZB1+wH3/Z9G+ZmboobfHYMVWJ+0E3JAh7BWT9BCezyMBM6U6ng==
+cert-dclrn,file,binary,../../.espressif/esp-matter/connectedhomeip/connectedhomeip/credentials/test/certification-declaration/Chip-Test-CD-FFF2-8001.der
