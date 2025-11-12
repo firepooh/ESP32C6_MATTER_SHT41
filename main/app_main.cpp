@@ -27,10 +27,13 @@
 #include <app/server/CommissioningWindowManager.h>
 #include <app/server/Server.h>
 
-#define ENABLE_TEMPERATURE_SENSOR
-#define ENABLE_HUMIDITY_SENSOR
+//#define ENABLE_TEMPERATURE_SENSOR
+//#define ENABLE_HUMIDITY_SENSOR
 //#define ENABLE_POWER_SOURCE_BATTERY
-#define ENABLE_POWER_SOURCE_BATTERY_ENDPOINT0
+//#define ENABLE_POWER_SOURCE_BATTERY_ENDPOINT0
+#define ENABLE_AIRQUALITY_PM_SENSOR
+
+#define SENSOR_UPDATE_PERIOD_SEC 30
 
 static const char *TAG = "app_main";
 
@@ -205,6 +208,51 @@ void battery_status_notification(uint16_t endpoint_id, float voltage, uint8_t pe
 }
 #endif
 
+#if defined(ENABLE_AIRQUALITY_PM_SENSOR)
+uint16_t pm_sensor_endpoint_id;
+float pm25_value = 10.0f;
+float pm10_value = 20.0f;
+float pm1_value = 5.0f;
+// PM2.5 값 업데이트 함수
+void pm25_sensor_update(float pm25_value)
+{
+  chip::DeviceLayer::SystemLayer().ScheduleLambda([pm25_value]() {
+    esp_matter_attr_val_t val = esp_matter_nullable_float(pm25_value);
+    
+    attribute::update(pm_sensor_endpoint_id,
+                      Pm25ConcentrationMeasurement::Id,
+                      Pm25ConcentrationMeasurement::Attributes::MeasuredValue::Id,
+                      &val);
+  });
+}
+
+// PM10 값 업데이트 함수
+void pm10_sensor_update(float pm10_value)
+{
+  chip::DeviceLayer::SystemLayer().ScheduleLambda([pm10_value]() {
+    esp_matter_attr_val_t val = esp_matter_nullable_float(pm10_value);
+    
+    attribute::update(pm_sensor_endpoint_id,
+                      Pm10ConcentrationMeasurement::Id,
+                      Pm10ConcentrationMeasurement::Attributes::MeasuredValue::Id,
+                      &val);
+  });
+}
+
+// PM1 값 업데이트 함수
+void pm1_sensor_update(float pm1_value)
+{
+  chip::DeviceLayer::SystemLayer().ScheduleLambda([pm1_value]() {
+    esp_matter_attr_val_t val = esp_matter_nullable_float(pm1_value); 
+    attribute::update(pm_sensor_endpoint_id,
+                      Pm1ConcentrationMeasurement::Id,
+                      Pm1ConcentrationMeasurement::Attributes::MeasuredValue::Id,
+                      &val);
+  });
+} 
+
+#endif
+
 void sensor_timer_callback(void *arg)
 {
 
@@ -235,6 +283,25 @@ void sensor_timer_callback(void *arg)
 
     battery_status_notification( batt_endpoint_id, batt_voltage , batt_percentage, NULL );
     //ESP_LOGI(TAG, "Sensor Timer Callback - Temp: %.2f, Humi: %.2f", temp, humi);
+    #endif
+
+    #if defined(ENABLE_AIRQUALITY_PM_SENSOR)
+    pm25_value += 1.0f;
+    if( pm25_value > 500.0f )
+      pm25_value = 10.0f;
+    pm25_sensor_update( pm25_value );
+
+    pm10_value += 2.0f;
+    if( pm10_value > 1000.0f )
+      pm10_value = 20.0f;
+    pm10_sensor_update( pm10_value );
+    
+    pm1_value += 0.5f;
+    if( pm1_value > 250.0f )
+      pm1_value = 5.0f;
+    pm1_sensor_update( pm1_value );
+
+    ESP_LOGI(TAG, "Sensor Timer Callback - PM2.5: %.2f, PM10: %.2f, PM1: %.2f", pm25_value, pm10_value, pm1_value);
     #endif
 }
 
@@ -369,6 +436,141 @@ static void add_battery_to_root_node(node_t *node)
 }
 #endif
 
+#if defined(ENABLE_AIRQUALITY_PM_SENSOR)
+// PM 센서 Endpoint 생성 함수 (Air Quality Sensor 기반)
+static void create_pm_sensor_endpoint(node_t *node)
+{
+  /*
+  feature_flags 설명:
+0x01 = NumericMeasurement (실제 측정값 제공)
+0x02 = LevelIndication (레벨만 제공)
+0x04 = MediumLevel (중간 레벨)
+0x08 = CriticalLevel (위험 레벨)
+0x10 = PeakMeasurement (피크값 측정)
+0x20 = AverageMeasurement (평균값 측정)  
+  */
+
+  // Air Quality Sensor config 설정
+  air_quality_sensor::config_t config;
+  
+  // Air Quality Sensor endpoint 생성
+  endpoint_t *endpoint = air_quality_sensor::create(node, &config, ENDPOINT_FLAG_NONE, NULL);
+  ABORT_APP_ON_FAILURE(endpoint != nullptr, ESP_LOGE(TAG, "PM 센서 endpoint 생성 실패"));
+  
+  pm_sensor_endpoint_id = endpoint::get_id(endpoint);
+  
+  // ========== PM2.5 Concentration Measurement Cluster 추가 ==========
+  cluster::pm25_concentration_measurement::config_t pm25_config;
+  // NumericMeasurement feature 활성화 (Feature bit 0x01)
+  pm25_config.feature_flags = 0x01;
+    
+  cluster_t *pm25_cluster = cluster::pm25_concentration_measurement::create(
+    endpoint, &pm25_config, CLUSTER_FLAG_SERVER
+  );
+  
+  if (pm25_cluster) {
+    // MeasuredValue attribute 설정
+    cluster::pm25_concentration_measurement::attribute::create_measured_value(
+      pm25_cluster, nullable<float>(0.0f)
+    );
+    
+    // MinMeasuredValue attribute 설정
+    cluster::pm25_concentration_measurement::attribute::create_min_measured_value(
+      pm25_cluster, nullable<float>(0.0f)
+    );
+    
+    // MaxMeasuredValue attribute 설정
+    cluster::pm25_concentration_measurement::attribute::create_max_measured_value(
+      pm25_cluster, nullable<float>(1000.0f)
+    );
+    
+    // MeasurementUnit attribute 설정 (4 = μg/m³)
+    cluster::pm25_concentration_measurement::attribute::create_measurement_unit(
+      pm25_cluster, static_cast<uint8_t>(4)
+    );
+    
+    // MeasurementMedium attribute 설정 (0 = Air)
+    cluster::pm25_concentration_measurement::attribute::create_measurement_medium(
+      pm25_cluster, static_cast<uint8_t>(0)
+    );
+    
+    ESP_LOGI(TAG, "PM2.5 클러스터 생성 완료");
+  }
+  
+  // ========== PM10 Concentration Measurement Cluster 추가 ==========
+  cluster::pm10_concentration_measurement::config_t pm10_config;
+  // NumericMeasurement feature 활성화 (Feature bit 0x01)
+  pm10_config.feature_flags = 0x01;
+  cluster_t *pm10_cluster = cluster::pm10_concentration_measurement::create(
+    endpoint, &pm10_config, CLUSTER_FLAG_SERVER
+  );
+  
+  if (pm10_cluster) {
+    // MeasuredValue attribute 설정
+    cluster::pm10_concentration_measurement::attribute::create_measured_value(
+      pm10_cluster, nullable<float>(0.0f)
+    );
+    
+    // MinMeasuredValue attribute 설정
+    cluster::pm10_concentration_measurement::attribute::create_min_measured_value(
+      pm10_cluster, nullable<float>(0.0f)
+    );
+    
+    // MaxMeasuredValue attribute 설정
+    cluster::pm10_concentration_measurement::attribute::create_max_measured_value(
+      pm10_cluster, nullable<float>(1000.0f)
+    );
+    
+    // MeasurementUnit attribute 설정
+    cluster::pm10_concentration_measurement::attribute::create_measurement_unit(
+      pm10_cluster, static_cast<uint8_t>(4)
+    );
+    
+    // MeasurementMedium attribute 설정
+    cluster::pm10_concentration_measurement::attribute::create_measurement_medium(
+      pm10_cluster, static_cast<uint8_t>(0)
+    );
+    
+    ESP_LOGI(TAG, "PM10 클러스터 생성 완료");
+  }
+  
+  #if 1
+  // ========== PM1 Concentration Measurement Cluster 추가 (선택) ==========
+  cluster::pm1_concentration_measurement::config_t pm1_config;
+  // NumericMeasurement feature 활성화 (Feature bit 0x01)
+  pm1_config.feature_flags = 0x01;
+  cluster_t *pm1_cluster = cluster::pm1_concentration_measurement::create(
+    endpoint, &pm1_config, CLUSTER_FLAG_SERVER
+  );
+  
+  if (pm1_cluster) {
+    cluster::pm1_concentration_measurement::attribute::create_measured_value(
+      pm1_cluster, nullable<float>(0.0f)
+    );
+    
+    cluster::pm1_concentration_measurement::attribute::create_min_measured_value(
+      pm1_cluster, nullable<float>(0.0f)
+    );
+    
+    cluster::pm1_concentration_measurement::attribute::create_max_measured_value(
+      pm1_cluster, nullable<float>(1000.0f)
+    );
+    
+    cluster::pm1_concentration_measurement::attribute::create_measurement_unit(
+      pm1_cluster, static_cast<uint8_t>(4)
+    );
+    
+    cluster::pm1_concentration_measurement::attribute::create_measurement_medium(
+      pm1_cluster, static_cast<uint8_t>(0)
+    );
+    
+    ESP_LOGI(TAG, "PM1 클러스터 생성 완료");
+  }
+  #endif
+  
+  ESP_LOGI(TAG, "PM 센서 Endpoint 생성 완료, ID: %d", pm_sensor_endpoint_id);
+}
+#endif
 
 extern "C" void app_main()
 {
@@ -420,6 +622,10 @@ extern "C" void app_main()
     add_battery_to_root_node(node);
     #endif
 
+    #if defined(ENABLE_AIRQUALITY_PM_SENSOR)
+    create_pm_sensor_endpoint( node );
+    #endif
+
 
 #if CHIP_DEVICE_CONFIG_ENABLE_THREAD
     /* Set OpenThread platform config */
@@ -443,9 +649,6 @@ extern "C" void app_main()
     };
 
   ESP_ERROR_CHECK(esp_timer_create(&timer_args, &sensor_timer));
-  ESP_ERROR_CHECK(esp_timer_start_periodic(sensor_timer, (10*1000*1000)));
-
-
-   
+  ESP_ERROR_CHECK(esp_timer_start_periodic(sensor_timer, (SENSOR_UPDATE_PERIOD_SEC*1000*1000)));
 
 }
