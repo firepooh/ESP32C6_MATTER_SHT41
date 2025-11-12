@@ -170,7 +170,8 @@ void humi_sensor_update( uint16_t humi_ep_id, float humi )
 
 void battery_status_notification(uint16_t endpoint_id, float voltage, uint8_t percentage, void *user_data)
 {
-    if (endpoint_id == 0) {
+/* */
+  if (endpoint_id == 0) {
         ESP_LOGE(TAG, "Battery endpoint not initialized");
         return;
     }
