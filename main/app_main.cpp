@@ -27,6 +27,11 @@
 #include <app/server/CommissioningWindowManager.h>
 #include <app/server/Server.h>
 
+#define ENABLE_TEMPERATURE_SENSOR
+#define ENABLE_HUMIDITY_SENSOR
+//#define ENABLE_POWER_SOURCE_BATTERY
+#define ENABLE_POWER_SOURCE_BATTERY_ENDPOINT0
+
 static const char *TAG = "app_main";
 
 using namespace esp_matter;
@@ -127,14 +132,10 @@ static esp_err_t app_attribute_update_cb(attribute::callback_type_t type, uint16
 
 
 esp_timer_handle_t sensor_timer;
+
+#if defined(ENABLE_TEMPERATURE_SENSOR)
 uint16_t temp_endpoint_id;
 float temp = 25.0f;
-uint16_t humi_endpoint_id;
-float humi = 50.0f;
-uint16_t batt_endpoint_id;
-float batt_voltage = 4.2f;
-uint8_t batt_percentage = 100;
-
 void temp_sensor_update( uint16_t temp_ep_id, float temp )
 {
     // schedule the attribute update so that we can report it from matter thread
@@ -150,7 +151,11 @@ void temp_sensor_update( uint16_t temp_ep_id, float temp )
         attribute::update(temp_ep_id, TemperatureMeasurement::Id, TemperatureMeasurement::Attributes::MeasuredValue::Id, &val);
     });
 }
+#endif
 
+#if defined(ENABLE_HUMIDITY_SENSOR)
+uint16_t humi_endpoint_id;
+float humi = 50.0f;
 void humi_sensor_update( uint16_t humi_ep_id, float humi )
 {
     // schedule the attribute update so that we can report it from matter thread
@@ -166,15 +171,21 @@ void humi_sensor_update( uint16_t humi_ep_id, float humi )
         attribute::update(humi_ep_id, RelativeHumidityMeasurement::Id, RelativeHumidityMeasurement::Attributes::MeasuredValue::Id, &val);
     });
 }
+#endif
 
-
+#if defined(ENABLE_POWER_SOURCE_BATTERY) || defined(ENABLE_POWER_SOURCE_BATTERY_ENDPOINT0)
+uint16_t batt_endpoint_id;
+float batt_voltage = 4.2f;
+uint8_t batt_percentage = 100;
 void battery_status_notification(uint16_t endpoint_id, float voltage, uint8_t percentage, void *user_data)
 {
 /* */
+#if defined(ENABLE_POWER_SOURCE_BATTERY) 
   if (endpoint_id == 0) {
         ESP_LOGE(TAG, "Battery endpoint not initialized");
         return;
     }
+#endif    
     
     uint32_t voltage_mv = (uint32_t)(voltage * 1000);
     
@@ -191,33 +202,43 @@ void battery_status_notification(uint16_t endpoint_id, float voltage, uint8_t pe
         
         ESP_LOGI(TAG, "Battery updated: %d mV, %d %%", (int)(voltage_mv), percentage);
     });
-  }
-
+}
+#endif
 
 void sensor_timer_callback(void *arg)
 {
+
+    #if defined(ENABLE_TEMPERATURE_SENSOR)
     temp += 0.1f;
     if( temp > 30 )
       temp = 25.0f;
 
+    temp_sensor_update( temp_endpoint_id, temp );
+    #endif
+
+    #if defined(ENABLE_HUMIDITY_SENSOR)
     humi += 0.2f;
     if( humi > 60 )
       humi = 50.0f;
 
+    humi_sensor_update( humi_endpoint_id, humi );
+    #endif
+
+    #if defined(ENABLE_POWER_SOURCE_BATTERY) || defined(ENABLE_POWER_SOURCE_BATTERY_ENDPOINT0)
     batt_voltage -= 0.1f;
-    if( batt_voltage < 3.6f )
-      batt_voltage = 3.7f;
+    if( batt_voltage < 3.3f )
+      batt_voltage = 4.2f;
 
     batt_percentage -= 2;
     if( batt_percentage < 20 )
       batt_percentage = 100;  
 
-    temp_sensor_update( temp_endpoint_id, temp );
-    humi_sensor_update( humi_endpoint_id, humi );
     battery_status_notification( batt_endpoint_id, batt_voltage , batt_percentage, NULL );
-    ESP_LOGI(TAG, "Sensor Timer Callback - Temp: %.2f, Humi: %.2f", temp, humi);
+    //ESP_LOGI(TAG, "Sensor Timer Callback - Temp: %.2f, Humi: %.2f", temp, humi);
+    #endif
 }
 
+#if defined(ENABLE_POWER_SOURCE_BATTERY)
 static void create_battery_endpoint(node_t *node)
 {
   power_source::config_t battery_config = {};
@@ -231,8 +252,8 @@ static void create_battery_endpoint(node_t *node)
     battery_config.power_source.features.battery.bat_replaceability = 1; // NotReplaceable
     
     // 기본 설정
-    battery_config.power_source.status = 0;
-    battery_config.power_source.order = 1;
+    battery_config.power_source.status = 1;
+    battery_config.power_source.order = 0;
     strncpy(battery_config.power_source.description, "Battery", esp_matter::cluster::power_source::k_max_description_length);
 
   endpoint_t * battery_ep = endpoint::power_source::create(node, &battery_config, ENDPOINT_FLAG_NONE, NULL);  
@@ -241,7 +262,19 @@ static void create_battery_endpoint(node_t *node)
     // 배터리 속성 수동 추가 (필요한 경우)
     cluster_t *power_source_cluster = cluster::get(battery_ep, PowerSource::Id);
     if (power_source_cluster) {
-        // BatVoltage attribute 추가
+    // BatPresent - 필수!
+    esp_matter_attr_val_t bat_present_val = esp_matter_bool(true);
+    attribute::create(power_source_cluster, 
+                     PowerSource::Attributes::BatPresent::Id, 
+                     ATTRIBUTE_FLAG_NONE, bat_present_val);
+    
+    // BatQuantity - 필수!
+    esp_matter_attr_val_t bat_quantity_val = esp_matter_uint8(1);
+    attribute::create(power_source_cluster, 
+                     PowerSource::Attributes::BatQuantity::Id,
+                     ATTRIBUTE_FLAG_NONE, bat_quantity_val);
+
+      // BatVoltage attribute 추가
         esp_matter_attr_val_t bat_voltage_val = esp_matter_nullable_uint32(4200); // 4.2V
         attribute::create(power_source_cluster, PowerSource::Attributes::BatVoltage::Id, 
                          ATTRIBUTE_FLAG_NULLABLE, bat_voltage_val);
@@ -257,6 +290,85 @@ static void create_battery_endpoint(node_t *node)
   //s_ctx.config.battery.endpoint_id = endpoint::get_id(battery_ep);
   batt_endpoint_id = endpoint::get_id(battery_ep);
 }
+#endif
+
+#if defined(ENABLE_POWER_SOURCE_BATTERY_ENDPOINT0)
+static void add_battery_to_root_node(node_t *node)
+{
+  // Endpoint 0 (Root Node) 가져오기
+  endpoint_t *root_endpoint = endpoint::get(node, 0);
+  if (!root_endpoint) {
+    ESP_LOGE(TAG, "Failed to get root endpoint");
+    return;
+  }
+
+  // Power Source 클러스터 직접 생성
+  cluster_t *power_source_cluster = cluster::create(
+    root_endpoint,
+    PowerSource::Id,
+    CLUSTER_FLAG_SERVER
+  );
+  
+  if (!power_source_cluster) {
+    ESP_LOGE(TAG, "Failed to create power source cluster");
+    return;
+  }
+
+  // 필수 속성들 추가
+  // Status
+  esp_matter_attr_val_t status_val = esp_matter_uint8(1); // Active
+  attribute::create(power_source_cluster, 
+                   PowerSource::Attributes::Status::Id, 
+                   ATTRIBUTE_FLAG_NONE, status_val);
+
+  // Order
+  esp_matter_attr_val_t order_val = esp_matter_uint8(0);
+  attribute::create(power_source_cluster, 
+                   PowerSource::Attributes::Order::Id,
+                   ATTRIBUTE_FLAG_NONE, order_val);
+
+  // Description
+  esp_matter_attr_val_t desc_val = esp_matter_char_str("Battery", strlen("Battery"));
+  attribute::create(power_source_cluster, 
+                   PowerSource::Attributes::Description::Id,
+                   ATTRIBUTE_FLAG_NONE, desc_val);
+
+  // BatPresent
+  esp_matter_attr_val_t bat_present_val = esp_matter_bool(true);
+  attribute::create(power_source_cluster, 
+                   PowerSource::Attributes::BatPresent::Id, 
+                   ATTRIBUTE_FLAG_NONE, bat_present_val);
+  
+  // BatQuantity
+  esp_matter_attr_val_t bat_quantity_val = esp_matter_uint8(1);
+  attribute::create(power_source_cluster, 
+                   PowerSource::Attributes::BatQuantity::Id,
+                   ATTRIBUTE_FLAG_NONE, bat_quantity_val);
+
+  // BatVoltage
+  esp_matter_attr_val_t bat_voltage_val = esp_matter_nullable_uint32(4200);
+  attribute::create(power_source_cluster, 
+                   PowerSource::Attributes::BatVoltage::Id, 
+                   ATTRIBUTE_FLAG_NULLABLE, bat_voltage_val);
+  
+  // BatPercentRemaining
+  esp_matter_attr_val_t bat_percent_val = esp_matter_nullable_uint8(200);
+  attribute::create(power_source_cluster, 
+                   PowerSource::Attributes::BatPercentRemaining::Id,
+                   ATTRIBUTE_FLAG_NULLABLE, bat_percent_val);
+
+  // FeatureMap - Battery feature (0x02)
+  esp_matter_attr_val_t feature_map_val = esp_matter_uint32(0x02);
+  attribute::create(power_source_cluster,
+                   PowerSource::Attributes::FeatureMap::Id,
+                   ATTRIBUTE_FLAG_NONE, feature_map_val);
+
+  batt_endpoint_id = 0;
+  
+  ESP_LOGI(TAG, "Power Source cluster added to endpoint 0");
+}
+#endif
+
 
 extern "C" void app_main()
 {
@@ -283,21 +395,30 @@ extern "C" void app_main()
     node_t *node = node::create(&node_config, app_attribute_update_cb, app_identification_cb);
     ABORT_APP_ON_FAILURE(node != nullptr, ESP_LOGE(TAG, "Failed to create Matter node"));
 
+    #if defined(ENABLE_TEMPERATURE_SENSOR)
     // add temperature sensor device
     temperature_sensor::config_t temp_sensor_config;
     endpoint_t * temp_sensor_ep = temperature_sensor::create(node, &temp_sensor_config, ENDPOINT_FLAG_NONE, NULL);
     ABORT_APP_ON_FAILURE(temp_sensor_ep != nullptr, ESP_LOGE(TAG, "Failed to create temperature_sensor endpoint"));
     temp_endpoint_id = esp_matter::endpoint::get_id(temp_sensor_ep);
+    #endif
 
+    #if defined(ENABLE_HUMIDITY_SENSOR)
     // add humidity sensor device
     humidity_sensor::config_t humidity_sensor_config;
     endpoint_t * humidity_sensor_ep = humidity_sensor::create(node, &humidity_sensor_config, ENDPOINT_FLAG_NONE, NULL);
     ABORT_APP_ON_FAILURE(humidity_sensor_ep != nullptr, ESP_LOGE(TAG, "Failed to create humidity_sensor endpoint"));
     humi_endpoint_id = esp_matter::endpoint::get_id(humidity_sensor_ep);
-  
+    #endif
+
+    #if defined(ENABLE_POWER_SOURCE_BATTERY)
     // add battery powered device
     create_battery_endpoint( node );
-    
+    #endif
+
+    #if defined(ENABLE_POWER_SOURCE_BATTERY_ENDPOINT0)
+    add_battery_to_root_node(node);
+    #endif
 
 
 #if CHIP_DEVICE_CONFIG_ENABLE_THREAD
@@ -325,30 +446,6 @@ extern "C" void app_main()
   ESP_ERROR_CHECK(esp_timer_start_periodic(sensor_timer, (10*1000*1000)));
 
 
-#if 0
-    uint16_t temp_ep_id = esp_matter::endpoint::get_id(temp_sensor_ep);
-    float temp = 25.0f;
-    while(1)
-    {
-        temp += 0.1f;
-        if( temp > 30 )
-          temp = 25.0f;
-          
-    // schedule the attribute update so that we can report it from matter thread
-    chip::DeviceLayer::SystemLayer().ScheduleLambda([temp_ep_id, temp]() {
-        attribute_t * attribute = attribute::get(temp_ep_id,
-                                                 TemperatureMeasurement::Id,
-                                                 TemperatureMeasurement::Attributes::MeasuredValue::Id);
-
-        esp_matter_attr_val_t val = esp_matter_invalid(NULL);
-        attribute::get_val(attribute, &val);
-        val.val.i16 = static_cast<int16_t>(temp * 100);
-
-        attribute::update(temp_ep_id, TemperatureMeasurement::Id, TemperatureMeasurement::Attributes::MeasuredValue::Id, &val);
-    });
-
-        vTaskDelay(pdMS_TO_TICKS(5000));
-    }
-#endif    
+   
 
 }
