@@ -505,9 +505,21 @@ static void create_pm_sensor_endpoint(node_t *node)
   // Air Quality Sensor endpoint 생성
   endpoint_t *endpoint = air_quality_sensor::create(node, &config, ENDPOINT_FLAG_NONE, NULL);
   ABORT_APP_ON_FAILURE(endpoint != nullptr, ESP_LOGE(TAG, "PM 센서 endpoint 생성 실패"));
-  
+
   pm_sensor_endpoint_id = endpoint::get_id(endpoint);
-  
+
+  // ========== Air Quality Cluster의 AirQuality attribute 생성 ==========
+  cluster_t *air_quality_cluster = cluster::get(endpoint, AirQuality::Id);
+  if (air_quality_cluster) {
+    // AirQuality attribute 생성 (초기값: Unknown = 0)
+    esp_matter_attr_val_t air_quality_val = esp_matter_enum8(0);
+    attribute::create(air_quality_cluster,
+                     AirQuality::Attributes::AirQuality::Id,
+                     ATTRIBUTE_FLAG_NONE,
+                     air_quality_val);
+    ESP_LOGI(TAG, "AirQuality attribute 생성 완료");
+  }
+
   // ========== PM2.5 Concentration Measurement Cluster 추가 ==========
   cluster::pm25_concentration_measurement::config_t pm25_config;
   // NumericMeasurement feature 활성화 (Feature bit 0x01)
