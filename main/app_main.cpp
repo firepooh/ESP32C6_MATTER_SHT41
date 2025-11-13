@@ -33,6 +33,12 @@
 //#define ENABLE_POWER_SOURCE_BATTERY_ENDPOINT0
 #define ENABLE_AIRQUALITY_PM_SENSOR
 
+/*
+  air quality 설정을 위해서는 "esp_matter_attribyte.cpp" 파일의
+  create_air_quality 함수에서 ATTRIBUTE_FLAG_MANAGED_INTERNALLY 플래그를 제거해야 함.
+*/
+
+
 #define SENSOR_UPDATE_PERIOD_SEC 30
 
 static const char *TAG = "app_main";
@@ -333,6 +339,7 @@ void sensor_timer_callback(void *arg)
       pm25_value = 10.0f;
     pm25_sensor_update( pm25_value );
 
+    #if 0
     pm10_value += 2.0f;
     if( pm10_value > 1000.0f )
       pm10_value = 20.0f;
@@ -342,6 +349,7 @@ void sensor_timer_callback(void *arg)
     if( pm1_value > 250.0f )
       pm1_value = 5.0f;
     pm1_sensor_update( pm1_value );
+#endif
 
     // PM2.5 기반 Air Quality 업데이트
     uint8_t air_quality = calculate_air_quality_from_pm25(pm25_value);
@@ -508,126 +516,27 @@ static void create_pm_sensor_endpoint(node_t *node)
 
   pm_sensor_endpoint_id = endpoint::get_id(endpoint);
 
-  // ========== Air Quality Cluster의 AirQuality attribute 생성 ==========
-  cluster_t *air_quality_cluster = cluster::get(endpoint, AirQuality::Id);
-  if (air_quality_cluster) {
-    // AirQuality attribute 생성 (초기값: Unknown = 0)
-    esp_matter_attr_val_t air_quality_val = esp_matter_enum8(0);
-    attribute::create(air_quality_cluster,
-                     AirQuality::Attributes::AirQuality::Id,
-                     ATTRIBUTE_FLAG_NONE,
-                     air_quality_val);
-    ESP_LOGI(TAG, "AirQuality attribute 생성 완료");
-  }
+// ========== PM2.5 Concentration Measurement Cluster 추가 ==========
+cluster::pm25_concentration_measurement::config_t pm25_config;
 
-  // ========== PM2.5 Concentration Measurement Cluster 추가 ==========
-  cluster::pm25_concentration_measurement::config_t pm25_config;
-  // NumericMeasurement feature 활성화 (Feature bit 0x01)
-  pm25_config.feature_flags = 0x01;
-    
-  cluster_t *pm25_cluster = cluster::pm25_concentration_measurement::create(
-    endpoint, &pm25_config, CLUSTER_FLAG_SERVER
-  );
+// NumericMeasurement feature 활성화
+pm25_config.feature_flags = 0x01;
+
+// config를 통해 초기값 설정
+pm25_config.measurement_medium = 0;  // Air
+pm25_config.features.numeric_measurement.measured_value = nullable<float>(0.0f);
+pm25_config.features.numeric_measurement.min_measured_value = nullable<float>(0.0f);
+pm25_config.features.numeric_measurement.max_measured_value = nullable<float>(1000.0f);
+pm25_config.features.numeric_measurement.measurement_unit = 4;  // μg/m³
+
+cluster_t *pm25_cluster = cluster::pm25_concentration_measurement::create(
+  endpoint, &pm25_config, CLUSTER_FLAG_SERVER
+);
+
+if (pm25_cluster) {
+  ESP_LOGI(TAG, "PM2.5 클러스터 생성 완료");
+}
   
-  if (pm25_cluster) {
-    // MeasuredValue attribute 설정
-    cluster::pm25_concentration_measurement::attribute::create_measured_value(
-      pm25_cluster, nullable<float>(0.0f)
-    );
-    
-    // MinMeasuredValue attribute 설정
-    cluster::pm25_concentration_measurement::attribute::create_min_measured_value(
-      pm25_cluster, nullable<float>(0.0f)
-    );
-    
-    // MaxMeasuredValue attribute 설정
-    cluster::pm25_concentration_measurement::attribute::create_max_measured_value(
-      pm25_cluster, nullable<float>(1000.0f)
-    );
-    
-    // MeasurementUnit attribute 설정 (4 = μg/m³)
-    cluster::pm25_concentration_measurement::attribute::create_measurement_unit(
-      pm25_cluster, static_cast<uint8_t>(4)
-    );
-    
-    // MeasurementMedium attribute 설정 (0 = Air)
-    cluster::pm25_concentration_measurement::attribute::create_measurement_medium(
-      pm25_cluster, static_cast<uint8_t>(0)
-    );
-    
-    ESP_LOGI(TAG, "PM2.5 클러스터 생성 완료");
-  }
-  
-  // ========== PM10 Concentration Measurement Cluster 추가 ==========
-  cluster::pm10_concentration_measurement::config_t pm10_config;
-  // NumericMeasurement feature 활성화 (Feature bit 0x01)
-  pm10_config.feature_flags = 0x01;
-  cluster_t *pm10_cluster = cluster::pm10_concentration_measurement::create(
-    endpoint, &pm10_config, CLUSTER_FLAG_SERVER
-  );
-  
-  if (pm10_cluster) {
-    // MeasuredValue attribute 설정
-    cluster::pm10_concentration_measurement::attribute::create_measured_value(
-      pm10_cluster, nullable<float>(0.0f)
-    );
-    
-    // MinMeasuredValue attribute 설정
-    cluster::pm10_concentration_measurement::attribute::create_min_measured_value(
-      pm10_cluster, nullable<float>(0.0f)
-    );
-    
-    // MaxMeasuredValue attribute 설정
-    cluster::pm10_concentration_measurement::attribute::create_max_measured_value(
-      pm10_cluster, nullable<float>(1000.0f)
-    );
-    
-    // MeasurementUnit attribute 설정
-    cluster::pm10_concentration_measurement::attribute::create_measurement_unit(
-      pm10_cluster, static_cast<uint8_t>(4)
-    );
-    
-    // MeasurementMedium attribute 설정
-    cluster::pm10_concentration_measurement::attribute::create_measurement_medium(
-      pm10_cluster, static_cast<uint8_t>(0)
-    );
-    
-    ESP_LOGI(TAG, "PM10 클러스터 생성 완료");
-  }
-  
-  #if 1
-  // ========== PM1 Concentration Measurement Cluster 추가 (선택) ==========
-  cluster::pm1_concentration_measurement::config_t pm1_config;
-  // NumericMeasurement feature 활성화 (Feature bit 0x01)
-  pm1_config.feature_flags = 0x01;
-  cluster_t *pm1_cluster = cluster::pm1_concentration_measurement::create(
-    endpoint, &pm1_config, CLUSTER_FLAG_SERVER
-  );
-  
-  if (pm1_cluster) {
-    cluster::pm1_concentration_measurement::attribute::create_measured_value(
-      pm1_cluster, nullable<float>(0.0f)
-    );
-    
-    cluster::pm1_concentration_measurement::attribute::create_min_measured_value(
-      pm1_cluster, nullable<float>(0.0f)
-    );
-    
-    cluster::pm1_concentration_measurement::attribute::create_max_measured_value(
-      pm1_cluster, nullable<float>(1000.0f)
-    );
-    
-    cluster::pm1_concentration_measurement::attribute::create_measurement_unit(
-      pm1_cluster, static_cast<uint8_t>(4)
-    );
-    
-    cluster::pm1_concentration_measurement::attribute::create_measurement_medium(
-      pm1_cluster, static_cast<uint8_t>(0)
-    );
-    
-    ESP_LOGI(TAG, "PM1 클러스터 생성 완료");
-  }
-  #endif
   
   ESP_LOGI(TAG, "PM 센서 Endpoint 생성 완료, ID: %d", pm_sensor_endpoint_id);
 }
