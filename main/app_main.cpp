@@ -243,13 +243,55 @@ void pm10_sensor_update(float pm10_value)
 void pm1_sensor_update(float pm1_value)
 {
   chip::DeviceLayer::SystemLayer().ScheduleLambda([pm1_value]() {
-    esp_matter_attr_val_t val = esp_matter_nullable_float(pm1_value); 
+    esp_matter_attr_val_t val = esp_matter_nullable_float(pm1_value);
     attribute::update(pm_sensor_endpoint_id,
                       Pm1ConcentrationMeasurement::Id,
                       Pm1ConcentrationMeasurement::Attributes::MeasuredValue::Id,
                       &val);
   });
-} 
+}
+
+// PM2.5 값을 기반으로 Air Quality 등급 계산 (EPA 기준)
+uint8_t calculate_air_quality_from_pm25(float pm25_value)
+{
+  // Matter Air Quality 등급:
+  // 0 = Unknown
+  // 1 = Good
+  // 2 = Fair
+  // 3 = Moderate
+  // 4 = Poor
+  // 5 = VeryPoor
+  // 6 = ExtremelyPoor
+
+  if (pm25_value < 0) {
+    return 0;  // Unknown
+  } else if (pm25_value <= 12.0f) {
+    return 1;  // Good
+  } else if (pm25_value <= 35.4f) {
+    return 2;  // Fair
+  } else if (pm25_value <= 55.4f) {
+    return 3;  // Moderate
+  } else if (pm25_value <= 150.4f) {
+    return 4;  // Poor
+  } else if (pm25_value <= 250.4f) {
+    return 5;  // VeryPoor
+  } else {
+    return 6;  // ExtremelyPoor
+  }
+}
+
+// Air Quality 업데이트 함수
+void air_quality_update(uint8_t air_quality)
+{
+  chip::DeviceLayer::SystemLayer().ScheduleLambda([air_quality]() {
+    esp_matter_attr_val_t val = esp_matter_enum8(air_quality);
+
+    attribute::update(pm_sensor_endpoint_id,
+                      AirQuality::Id,
+                      AirQuality::Attributes::AirQuality::Id,
+                      &val);
+  });
+}
 
 #endif
 
@@ -295,13 +337,20 @@ void sensor_timer_callback(void *arg)
     if( pm10_value > 1000.0f )
       pm10_value = 20.0f;
     pm10_sensor_update( pm10_value );
-    
+
     pm1_value += 0.5f;
     if( pm1_value > 250.0f )
       pm1_value = 5.0f;
     pm1_sensor_update( pm1_value );
 
-    ESP_LOGI(TAG, "Sensor Timer Callback - PM2.5: %.2f, PM10: %.2f, PM1: %.2f", pm25_value, pm10_value, pm1_value);
+    // PM2.5 기반 Air Quality 업데이트
+    uint8_t air_quality = calculate_air_quality_from_pm25(pm25_value);
+    air_quality_update(air_quality);
+
+    // 공기질 등급 문자열
+    const char* air_quality_str[] = {"Unknown", "Good", "Fair", "Moderate", "Poor", "VeryPoor", "ExtremelyPoor"};
+    ESP_LOGI(TAG, "Sensor Timer Callback - PM2.5: %.2f, PM10: %.2f, PM1: %.2f, AirQuality: %s(%d)",
+             pm25_value, pm10_value, pm1_value, air_quality_str[air_quality], air_quality);
     #endif
 }
 
